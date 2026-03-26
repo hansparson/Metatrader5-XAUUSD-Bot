@@ -1,0 +1,21 @@
+==================================================
+TRADING HISTORY SUMMARY - XAUUSD.vx
+Period: 2026-03-25 09:30 to 2026-03-26 09:30
+==================================================
+Total Completed Trades : 447
+Winning Trades         : 234
+Losing Trades          : 213
+Win Rate               : 52.35%
+--------------------------------------------------
+Gross Profit/Loss      : $-11.86
+Total Commissions      : $0.00
+Total Swap             : $0.00
+NET PROFIT/LOSS        : $-11.86
+==================================================
+
+Last 5 Completed Deals:
+Time: 2026-03-26 09:30:18 | Profit: $1.57
+Time: 2026-03-26 09:30:18 | Profit: $1.02
+Time: 2026-03-26 09:30:18 | Profit: $1.32
+Time: 2026-03-26 09:30:18 | Profit: $1.76
+Time: 2026-03-26 09:30:18 | Profit: $1.82

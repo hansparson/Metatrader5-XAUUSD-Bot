@@ -1,0 +1,9 @@
+MetaTrader5
+pandas
+numpy
+torch
+ta
+joblib
+python-dotenv
+scikit-learn
+tqdm
