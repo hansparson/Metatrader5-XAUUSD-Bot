@@ -7,12 +7,18 @@ import sqlite3
 import numpy as np
 from model_v2 import CandlePatternAI
 from tqdm import tqdm
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configuration
 DB_NAME = "trading_data.db"
 SEQ_LEN = 50
 INITIAL_BALANCE = 10000
-LOT_SIZE = 0.1 
+LOT_SIZE = float(os.getenv("PRO_LOT_SIZE", 0.01))
+CONFIDENCE_THRESHOLD = float(os.getenv("PRO_CONFIDENCE_THRESHOLD", 0.45))
 PIP_VALUE = 10 
 
 FEATURE_COLS = [
@@ -70,8 +76,8 @@ def simulate_backtest():
         conf = confidences[i]
         idx = i + SEQ_LEN
         
-        # Using 0.50 threshold for the regularized model
-        if action < 2 and conf >= 0.50:
+        # Using threshold from .env
+        if action < 2 and conf >= CONFIDENCE_THRESHOLD:
             actual_label = df.iloc[idx]['label']
             atr = df.iloc[idx]['atr']
             
@@ -110,6 +116,9 @@ def simulate_backtest():
         print(f"Total Trades     : {len(trades_df)}")
         print(f"Win Rate         : {win_rate:.2f}%")
         print(f"Max Drawdown     : ${max_dd:.2f}")
+        print(f"Minimum Balance  : ${equity_curve.min():.2f}")
+        if equity_curve.min() < 0:
+            print("WARNING: THE ACCOUNT WOULD HAVE BLOWN (BALANCE WENT NEGATIVE)!")
         print("="*40)
     else:
         print("No trades executed during the backtest.")

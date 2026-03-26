@@ -163,8 +163,10 @@ def bot_main():
                 tick = mt5.symbol_info_tick(SYMBOL)
                 
                 # Dynamic Logging
+                curr = df.iloc[-1]
+                rsi, atr, d200 = curr['rsi']*100, curr['atr'], curr['dist_ema200']
                 status_icon = "📉" if action == "SELL" else "📈" if action == "BUY" else "💤"
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] {status_icon} AI: {action:<4} ({conf:.1%}) | Price: {tick.bid}")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] {status_icon} AI: {action:<4} ({conf:.1%}/{CONFIDENCE_THRESHOLD:.1%}) | P: {tick.bid} | RSI: {rsi:.1f} | ATR: {atr:.2f} | D200: {d200:+.2f}")
 
                 # 4. Position Management
                 positions = mt5.positions_get(symbol=SYMBOL, magic=MAGIC_NUMBER)

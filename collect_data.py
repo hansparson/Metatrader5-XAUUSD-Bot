@@ -54,8 +54,8 @@ def create_db():
 def collect_data(timeframe_name):
     tf = TIMEFRAMES[timeframe_name]
     
-    # Try different time ranges up to 10 years (3650 days)
-    ranges_in_days = [3650, 1825, 730, 365, 90]
+    # Recency Optimization: Fetching 180 days for 6-month backtest
+    ranges_in_days = [180]
     rates = None
     
     for days in ranges_in_days:
