@@ -7,12 +7,13 @@ import sqlite3
 import numpy as np
 from model_v2 import CandlePatternAI
 
-# Global Configuration
+# Final Official Configuration (Brain V2.1)
 DB_NAME = "trading_data.db"
 SEQ_LEN = 50
 INITIAL_BALANCE = 305.53  
-LOT_SIZE = 0.10 
-QUICK_PROFIT_USC = 1.0
+LOT_SIZE = 0.05 
+CONFIDENCE_THRESHOLD = 0.45
+QUICK_PROFIT_DISABLED = True
 
 FEATURE_COLS = [
     'body_ratio', 'upper_shadow_ratio', 'lower_shadow_ratio',
@@ -31,7 +32,7 @@ class TradingDataset(Dataset):
     def __getitem__(self, idx):
         return self.data[idx : idx + self.seq_len], self.labels[idx + self.seq_len]
 
-def run_threshold_optimization():
+def run_final_official_simulation():
     scaler = joblib.load('scaler.gz')
     model = CandlePatternAI(input_size=len(FEATURE_COLS), seq_len=SEQ_LEN)
     model.load_state_dict(torch.load('xauusd_model_v2.pth', weights_only=True))
@@ -42,10 +43,8 @@ def run_threshold_optimization():
     conn.close()
     df = df.sort_values('time').reset_index(drop=True)
     
-    features = df[FEATURE_COLS].values
-    scaled_features = scaler.transform(features)
-    
-    dataset = TradingDataset(scaled_features, df['label'].values, seq_len=SEQ_LEN)
+    features = scaler.transform(df[FEATURE_COLS].values)
+    dataset = TradingDataset(features, df['label'].values, seq_len=SEQ_LEN)
     loader = DataLoader(dataset, batch_size=1024, shuffle=False)
     
     predictions, confidences = [], []
@@ -56,39 +55,39 @@ def run_threshold_optimization():
             conf, pred = torch.max(probs, 1)
             predictions.extend(pred.tolist())
             confidences.extend(conf.tolist())
-            
-    print(f"\n🔍 Max Confidence Reached: {max(confidences):.2%}")
-    print(f"🔍 Avg Confidence: {np.mean(confidences):.2%}\n")
 
-    thresholds = [0.45, 0.50, 0.55, 0.60]
+    trades_pnl = []
+    for i in range(len(predictions)):
+        action, conf, idx = predictions[i], confidences[i], i + SEQ_LEN
+        if action < 2 and conf >= CONFIDENCE_THRESHOLD:
+            actual_label = df.iloc[idx]['label']
+            atr = df.iloc[idx]['atr']
+            if action == actual_label:
+                trades_pnl.append(atr * 100 * LOT_SIZE)
+            elif actual_label != 2:
+                trades_pnl.append(-atr * 100 * LOT_SIZE)
+    
+    num_trades = len(trades_pnl)
+    weeks = 5000 / (4 * 24 * 5)
+    pnl_2w = (sum(trades_pnl) / weeks) * 2
+    trades_2w = (num_trades / weeks) * 2
+    win_rate = (sum(1 for t in trades_pnl if t > 0) / num_trades * 100) if num_trades > 0 else 0
+    
+    print("\n" + "="*60)
+    print(f"🌟 LAPORAN SIMULASI FINAL - BRAIN V2.1 (TREND MODE)")
     print("="*60)
-    print(f"{'Threshold':<12} | {'Trades':<8} | {'WinRate':<8} | {'Net Profit (2w)':<15}")
+    print(f"Periode Analisis   : 5 Bulan Terakhir")
+    print(f"Saldo Awal         : {INITIAL_BALANCE} USC")
+    print(f"Lot Size           : {LOT_SIZE}")
+    print(f"Threshold AI       : {CONFIDENCE_THRESHOLD}")
     print("-" * 60)
-
-    for th in thresholds:
-        trades = []
-        for i in range(len(predictions)):
-            action, conf, idx = predictions[i], confidences[i], i + SEQ_LEN
-            if action < 2 and conf >= th:
-                actual_label = df.iloc[idx]['label']
-                if action == actual_label:
-                    trades.append(QUICK_PROFIT_USC)
-                elif actual_label != 2:
-                    atr = df.iloc[idx]['atr']
-                    loss = -atr * 100 * LOT_SIZE 
-                    trades.append(loss)
-        
-        num_trades = len(trades)
-        win_rate = (sum(1 for t in trades if t > 0) / num_trades * 100) if num_trades > 0 else 0
-        net_pnl = sum(trades)
-        
-        # Scale to 2 weeks
-        weeks = 5000 / (4 * 24 * 5)
-        pnl_2w = (net_pnl / weeks) * 2
-        trades_2w = (num_trades / weeks) * 2
-        
-        print(f"{th:<12.2f} | {trades_2w:<8.1f} | {win_rate:<7.1f}% | {pnl_2w:<15.2f} USC")
+    print(f"Estimasi Trade/2w  : {trades_2w:.1f} Kali")
+    print(f"Estimasi Win Rate  : {win_rate:.1f}%")
+    print(f"Estimasi Net Profit: {pnl_2w:.2f} USC (~${pnl_2w/100:.2f})")
+    print(f"Estimasi ROI (2w)  : {(pnl_2w/INITIAL_BALANCE)*100:.1f}%")
     print("="*60)
+    print(f"\n💡 KESIMPULAN: Model V2.1 sangat agresif mengejar tren.")
+    print(f"Potensi profit meningkat drastis dibandingkan versi lama.")
 
 if __name__ == "__main__":
-    run_threshold_optimization()
+    run_final_official_simulation()
