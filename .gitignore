@@ -1,16 +1,10 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
+# Only hide sensitive credentials
 .env
 
-# Data & Database
-*.db
-*.csv
-
-# IDEs
+# Cache & IDES (Safe to ignore)
+__pycache__/
 .vscode/
 .idea/
 .gemini/
 brain/
+venv/
