@@ -26,14 +26,10 @@ SEQ_LEN = int(os.getenv("PRO_SEQ_LEN", 50))
 MODEL_PATH = os.getenv("PRO_MODEL_PATH", "xauusd_model_v2.pth")
 SCALER_PATH = os.getenv("PRO_SCALER_PATH", "scaler.gz")
 MAGIC_NUMBER = int(os.getenv("PRO_MAGIC_NUMBER", 20240326))
-
-# CRITICAL SAFETY: Hard-limit positions to 1 for $3 balance
-# We ignore .env here to force safety
-MAX_OPEN_POSITIONS = 1 
-
-PROFIT_THRESHOLD = float(os.getenv("PRO_QUICK_PROFIT", 0.0))
+MAX_OPEN_POSITIONS = 1 # Safety Hard-Lock
 CONFIDENCE_THRESHOLD = float(os.getenv("PRO_CONFIDENCE_THRESHOLD", 0.45))
 LOT_SIZE = float(os.getenv("PRO_LOT_SIZE", 0.05))
+PROFIT_THRESHOLD = float(os.getenv("PRO_QUICK_PROFIT", 0.0))
 
 SYMBOL = SYMBOL_BASE
 FILLING_TYPE = mt5.ORDER_FILLING_IOC
@@ -56,10 +52,10 @@ def init_mt5():
     if login and not mt5.login(int(login), pw, srv): return False
     
     global SYMBOL, FILLING_TYPE
-    all_symbols = [s.name for s in mt5.symbols_get()]
-    for sym in [SYMBOL_BASE, "XAUUSD.vx", "XAUUSD.vxc", "GOLD"]:
-        if sym in all_symbols and mt5.symbol_select(sym, True):
-            SYMBOL = sym; break
+    all_syms = [s.name for s in mt5.symbols_get()]
+    for s in [SYMBOL_BASE, "XAUUSD.vx", "XAUUSD.vxc", "XAUUSD.m", "GOLD"]:
+        if s in all_syms and mt5.symbol_select(s, True):
+            SYMBOL = s; break
     
     info = mt5.symbol_info(SYMBOL)
     if info:
@@ -67,18 +63,6 @@ def init_mt5():
         elif info.filling_mode & 2: FILLING_TYPE = mt5.ORDER_FILLING_IOC
         else: FILLING_TYPE = mt5.ORDER_FILLING_RETURN
     return True
-
-def close_position(pos):
-    tick = mt5.symbol_info_tick(SYMBOL)
-    req = {
-        "action": mt5.TRADE_ACTION_DEAL, "symbol": SYMBOL, "volume": pos.volume,
-        "type": mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY,
-        "position": pos.ticket, "price": tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask,
-        "magic": MAGIC_NUMBER, "comment": "Safety Exit", "type_time": mt5.ORDER_TIME_GTC, "type_filling": FILLING_TYPE,
-    }
-    res = mt5.order_send(req)
-    if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Closed #{pos.ticket} | Profit: ${pos.profit:.2f}")
 
 def get_processed_data():
     rates = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME_M15, 0, 300)
@@ -99,27 +83,74 @@ def get_processed_data():
     df['day_sin'], df['day_cos'] = np.sin(2*np.pi*df['time_dt'].dt.dayofweek/6.0), np.cos(2*np.pi*df['time_dt'].dt.dayofweek/6.0)
     return df.dropna().reset_index(drop=True)
 
+def close_position(pos, reason="Reason"):
+    tick = mt5.symbol_info_tick(SYMBOL)
+    req = {
+        "action": mt5.TRADE_ACTION_DEAL, "symbol": SYMBOL, "volume": pos.volume,
+        "type": mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY,
+        "position": pos.ticket, "price": tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask,
+        "magic": MAGIC_NUMBER, "comment": f"Close: {reason}", "type_time": mt5.ORDER_TIME_GTC, "type_filling": FILLING_TYPE,
+    }
+    res = mt5.order_send(req)
+    if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ CLOSED #{pos.ticket} ({reason}) | PnL: {pos.profit:+.2f} USC")
+
 def execute_order(action):
     tick = mt5.symbol_info_tick(SYMBOL)
     req = {
         "action": mt5.TRADE_ACTION_DEAL, "symbol": SYMBOL, "volume": LOT_SIZE,
         "type": mt5.ORDER_TYPE_BUY if action == "BUY" else mt5.ORDER_TYPE_SELL,
         "price": tick.ask if action == "BUY" else tick.bid,
-        "magic": MAGIC_NUMBER, "comment": "AI V2.1 Safety", "type_time": mt5.ORDER_TIME_GTC, "type_filling": FILLING_TYPE,
+        "magic": MAGIC_NUMBER, "comment": "AI Entry", "type_time": mt5.ORDER_TIME_GTC, "type_filling": FILLING_TYPE,
     }
     res = mt5.order_send(req)
-    if res and res.retcode == mt5.TRADE_RETCODE_DONE: print(f"[{datetime.now().strftime('%H:%M:%S')}] {action} Executed (Lot {LOT_SIZE})")
+    if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔥 {action} EXECUTED @ {res.price}")
+    else:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ ERROR: {res.comment if res else 'Unknown'}")
+
+def print_status_panel():
+    account = mt5.account_info()
+    if not account: return
+    
+    positions = mt5.positions_get(symbol=SYMBOL, magic=MAGIC_NUMBER)
+    floating_pnl = sum(p.profit for p in positions) if positions else 0.0
+    
+    print("-" * 65)
+    print(f" 💰 Balance: {account.balance:.2f} USC | Equity: {account.equity:.2f} USC")
+    print(f" 📈 Floating: {floating_pnl:+.2f} USC | Positions: {len(positions)}/{MAX_OPEN_POSITIONS}")
+    print("-" * 65)
 
 def bot_main():
-    print("="*50); print(f" XAUUSD SAFETY ENGINE V2.1 "); print("="*50)
-    if not init_mt5(): return
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print("="*65)
+    print(f" 🚀 XAUUSD BRAIN V2.1 PRO - {TRADING_MODE} MODE ")
+    print("="*65)
+    
+    if not init_mt5():
+        print("❌ CRITICAL: MT5 Connection Failed.")
+        return
+        
     scaler, model = joblib.load(SCALER_PATH), CandlePatternAI(len(FEATURE_COLS), SEQ_LEN)
     model.load_state_dict(torch.load(MODEL_PATH, weights_only=True)); model.eval()
     
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Mode: {TRADING_MODE} | Limit: {MAX_OPEN_POSITIONS} Pos")
+    print(f"✅ AI Brain Loaded. Monitoring {SYMBOL}...")
+    
+    last_status_time = 0
     
     try:
         while True:
+            # 1. Connection Health Check
+            if not mt5.terminal_info().connected:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔴 CONNECTION LOST! Retrying...")
+                mt5.shutdown(); time.sleep(5); init_mt5(); continue
+
+            # 2. Periodic Status Update
+            if time.time() - last_status_time > 60: # Every 1 minute
+                print_status_panel()
+                last_status_time = time.time()
+
+            # 3. Market Analysis
             df = get_processed_data()
             if df is not None:
                 recent = df[FEATURE_COLS].tail(SEQ_LEN)
@@ -130,30 +161,33 @@ def bot_main():
                 
                 action, conf = {0: "BUY", 1: "SELL", 2: "HOLD"}[pred.item()], conf.item()
                 tick = mt5.symbol_info_tick(SYMBOL)
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] AI: {action} ({conf:.1%}) | {SYMBOL}: {tick.bid}")
+                
+                # Dynamic Logging
+                status_icon = "📉" if action == "SELL" else "📈" if action == "BUY" else "💤"
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] {status_icon} AI: {action:<4} ({conf:.1%}) | Price: {tick.bid}")
 
+                # 4. Position Management
                 positions = mt5.positions_get(symbol=SYMBOL, magic=MAGIC_NUMBER)
                 
-                # URGENT SAFETY: Close excess positions if somehow opened
+                # Auto-Safety: Close excess positions
                 if positions and len(positions) > MAX_OPEN_POSITIONS:
-                    print(f"[!] Over-exposure detected! Closing excess positions...")
-                    for p in positions[MAX_OPEN_POSITIONS:]: close_position(p)
+                    for p in positions[MAX_OPEN_POSITIONS:]: close_position(p, "Excess Safety")
                     positions = mt5.positions_get(symbol=SYMBOL, magic=MAGIC_NUMBER)
 
                 if positions:
                     for pos in positions:
                         if pos.profit <= -100.0:
-                            print(f"[!] Stop Loss Hit. Closing #{pos.ticket}")
-                            close_position(pos)
+                            close_position(pos, "Emergency SL")
                         elif (pos.type == 0 and action == "SELL") or (pos.type == 1 and action == "BUY"):
-                            print(f"[EXIT] Signal reversed. Closing #{pos.ticket}")
-                            close_position(pos)
+                            close_position(pos, "Signal Reversal")
                         elif PROFIT_THRESHOLD > 0 and pos.profit >= PROFIT_THRESHOLD:
-                            close_position(pos)
+                            close_position(pos, "Quick Profit")
 
+                # 5. Entry Logic
                 if action in ["BUY", "SELL"] and conf >= CONFIDENCE_THRESHOLD:
                     if not positions or len(positions) < MAX_OPEN_POSITIONS:
                         execute_order(action)
+            
             time.sleep(15)
     except KeyboardInterrupt: pass
     finally: mt5.shutdown()
