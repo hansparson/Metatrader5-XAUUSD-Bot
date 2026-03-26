@@ -15,7 +15,8 @@ from model_v2 import CandlePatternAI
 
 # Silence warnings for a clean production interface
 warnings.filterwarnings("ignore")
-load_dotenv()
+# Load .env with override=True to ensure manual changes are picked up on restart
+load_dotenv(override=True)
 
 # =================================================================
 # CONFIGURATION (LOADED FROM .ENV WITH DEFAULTS)
@@ -60,6 +61,7 @@ def init_mt5():
     server = os.getenv(prefix + "SERVER")
     
     if login and password and server:
+        # Hide password in logs for security
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Connecting to {TRADING_MODE} Account: {login}...")
         if not mt5.login(int(login), password, server):
             print(f"[{datetime.now()}] Login failed for {TRADING_MODE} account {login}")
@@ -209,6 +211,8 @@ def bot_main():
             # 2. AI Sequence Analysis
             df = get_latest_data()
             if df is not None and len(df) >= SEQ_LEN:
+                # Pass directly without extra '.values' to keep feature names hint for sklearn if possible, 
+                # but transform still returns array.
                 recent_df = df[FEATURE_COLS].tail(SEQ_LEN)
                 scaled_data = scaler.transform(recent_df)
                 
@@ -225,9 +229,10 @@ def bot_main():
                 # Feedback Log
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] AI Status: {action} ({confidence:.2%}) | Bid: {tick.bid if tick else 'N/A'}")
                 
-                # Execution Logic
+                # Execution Logic (Strictly respect Max Positions)
                 if action in ["BUY", "SELL"] and confidence >= CONFIDENCE_THRESHOLD:
-                    if len(positions) < MAX_OPEN_POSITIONS:
+                    current_positions = len(positions) if positions else 0
+                    if current_positions < MAX_OPEN_POSITIONS:
                         execute_order(action, confidence)
             else:
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Syncing market data...")
