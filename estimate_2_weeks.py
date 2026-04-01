@@ -5,15 +5,19 @@ import joblib
 import pandas as pd
 import sqlite3
 import numpy as np
+import os
+from dotenv import load_dotenv
 from model_v2 import CandlePatternAI
 
+load_dotenv(override=True)
+
 # Final Official Configuration (Brain V2.1)
-DB_NAME = "trading_data.db"
-SEQ_LEN = 50
-INITIAL_BALANCE = 305.53  
-LOT_SIZE = 0.05 
-CONFIDENCE_THRESHOLD = 0.45
-QUICK_PROFIT_DISABLED = True
+DB_NAME = os.getenv("PRO_DB_NAME", "trading_data.db")
+SEQ_LEN = int(os.getenv("PRO_SEQ_LEN", 50))
+INITIAL_BALANCE = 6100.0  # $61 = 6100 USC
+LOT_SIZE = float(os.getenv("PRO_LOT_SIZE", 0.01))
+CONFIDENCE_THRESHOLD = float(os.getenv("PRO_CONFIDENCE_THRESHOLD", 0.75))
+QUICK_PROFIT_DISABLED = True # PRO_QUICK_PROFIT=0.0 means disabled
 
 FEATURE_COLS = [
     'body_ratio', 'upper_shadow_ratio', 'lower_shadow_ratio',

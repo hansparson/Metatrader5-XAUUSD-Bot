@@ -67,23 +67,26 @@ def simulate_backtest():
             predictions.extend(pred.tolist())
             confidences.extend(conf.tolist())
             
-    # Simulation Loop
+    # Aggressive Scalping Settings
+    TRIAL_THRESHOLD = 0.38
+    AGGRESSIVE_LOT = 0.03
     balance = INITIAL_BALANCE
     trades = []
+    atr_values = []
     
     for i in range(len(predictions)):
         action = predictions[i]
         conf = confidences[i]
         idx = i + SEQ_LEN
         
-        # Using threshold from .env
-        if action < 2 and conf >= CONFIDENCE_THRESHOLD:
+        if action < 2 and conf >= TRIAL_THRESHOLD:
             actual_label = df.iloc[idx]['label']
             atr = df.iloc[idx]['atr']
+            atr_values.append(atr)
             
             if action == actual_label:
                 # Win (TP = 2 * ATR)
-                profit = (atr * 2.0) * 100 * LOT_SIZE
+                profit = (atr * 2.0) * 100 * AGGRESSIVE_LOT
                 balance += profit
                 trades.append(('WIN', action, profit))
             elif actual_label != 2:
@@ -95,8 +98,12 @@ def simulate_backtest():
     # Report
     print(f"Max Confidence reached: {max(confidences):.4f}")
     print(f"Average Confidence: {np.mean(confidences):.4f}")
-    action_counts = pd.Series(predictions).value_counts().to_dict()
-    print(f"Action counts (0:BUY, 1:SELL, 2:HOLD): {action_counts}")
+    print(f"Confidence Threshold used: {TRIAL_THRESHOLD}")
+    if atr_values:
+        avg_atr = np.mean(atr_values)
+        print(f"Average ATR: {avg_atr:.4f} (~{avg_atr*10:.1f} pips)")
+        print(f"Recommended SL: {avg_atr:.4f} (~{avg_atr*10:.1f} pips)")
+        print(f"Recommended TP: {avg_atr*2.0:.4f} (~{avg_atr*20:.1f} pips)")
 
     trades_df = pd.DataFrame(trades, columns=['Result', 'Action', 'PnL'])
     if not trades_df.empty:
@@ -108,7 +115,7 @@ def simulate_backtest():
         max_dd = (equity_curve.cummax() - equity_curve).max()
         
         print("\n" + "="*40)
-        print("ULTIMATE BACKTEST REPORT (Attention V2)")
+        print("XAUUSD SCALPING PROJECTION (2-YEARS)")
         print("="*40)
         print(f"Initial Balance  : ${INITIAL_BALANCE}")
         print(f"Final Balance    : ${balance:.2f}")
@@ -116,9 +123,7 @@ def simulate_backtest():
         print(f"Total Trades     : {len(trades_df)}")
         print(f"Win Rate         : {win_rate:.2f}%")
         print(f"Max Drawdown     : ${max_dd:.2f}")
-        print(f"Minimum Balance  : ${equity_curve.min():.2f}")
-        if equity_curve.min() < 0:
-            print("WARNING: THE ACCOUNT WOULD HAVE BLOWN (BALANCE WENT NEGATIVE)!")
+        print(f"Profit Factor    : {abs(trades_df[trades_df['PnL'] > 0]['PnL'].sum() / trades_df[trades_df['PnL'] < 0]['PnL'].sum()):.2f}" if any(trades_df['PnL'] < 0) else "PF: Inf")
         print("="*40)
     else:
         print("No trades executed during the backtest.")

@@ -54,28 +54,38 @@ def create_db():
 def collect_data(timeframe_name):
     tf = TIMEFRAMES[timeframe_name]
     
-    # Recency Optimization: Fetching 180 days for 6-month backtest
-    ranges_in_days = [180]
-    rates = None
+    # Chunked fetching to handle broker limits
+    chunk_size = 180
+    all_rates = []
     
-    for days in ranges_in_days:
-        print(f"Trying to fetch {days} days for {timeframe_name}...")
-        utc_to = datetime.now()
-        utc_from = utc_to - timedelta(days=days)
+    current_to = datetime.now()
+    total_days = 730
+    days_collected = 0
+    
+    while days_collected < total_days:
+        current_from = current_to - timedelta(days=chunk_size)
+        print(f"Fetching {chunk_size} days for {timeframe_name} (from {current_from} to {current_to})...")
         
-        rates = mt5.copy_rates_range(SYMBOL, tf, utc_from, utc_to)
+        rates = mt5.copy_rates_range(SYMBOL, tf, current_from, current_to)
         
         if rates is not None and len(rates) > 0:
-            print(f"Successfully fetched {len(rates)} candles for {days} days on {timeframe_name}")
-            break
+            all_rates.append(pd.DataFrame(rates))
+            print(f"Successfully fetched {len(rates)} candles.")
+            # Move window back
+            current_to = current_from
+            days_collected += chunk_size
         else:
-            print(f"Failed to fetch {days} days on {timeframe_name}. Error: {mt5.last_error()}")
+            print(f"No more data or limit reached for {timeframe_name}. Error: {mt5.last_error()}")
+            break
 
-    if rates is None or len(rates) == 0:
+    if not all_rates:
         print(f"All collection attempts failed for {timeframe_name}")
         return
     
-    df = pd.DataFrame(rates)
+    # Concatenate all DataFrames
+    df = pd.concat(all_rates)
+    # Sort and remove duplicates
+    df = df.drop_duplicates(subset=['time']).sort_values('time')
     
     # Connect to SQLite and save
     conn = sqlite3.connect(DB_NAME)
